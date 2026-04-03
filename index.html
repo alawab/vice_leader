@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>抉择 | 折戟沉沙 </title>
+    <title>抉择·折戟沉沙</title>
     <style>
         * {
             user-select: none;
@@ -81,7 +81,7 @@
             width: 100%;
             height: auto;
             cursor: pointer;
-            touch-action: none; /* 防止触摸时滚动/缩放 */
+            touch-action: none;
         }
 
         .action-bar {
@@ -140,7 +140,6 @@
             font-style: italic;
         }
 
-        /* 浮动一键胜利按钮（显性但小巧） */
         .float-win-btn {
             position: fixed;
             bottom: 20px;
@@ -164,7 +163,6 @@
             background: rgba(0,0,0,0.85);
         }
 
-        /* 结算动画层 */
         .settle-animation {
             position: fixed;
             top: 0;
@@ -205,9 +203,8 @@
 
     <div id="slingshotStats" class="info-panel hide">
         <span>🎯 命中: <span id="hitCount">0</span> / 3</span>
-        <span>💔 失误: <span id="missCount">0</span> / 3</span>
-        <span>🪨 剩余拦截次数: <span id="remainAttempts">5</span></span>
-        <span>✈️ 点击画面发射信号</span>
+        <span>🪨 剩余拦截次数: <span id="remainAttempts">20</span></span>
+        <span>✈️ 点击画面发射信号 (飞机移动中)</span>
     </div>
 
     <div id="actionButtons" class="action-bar"></div>
@@ -217,13 +214,25 @@
 
 <script>
     // ========================= 全局状态 =========================
-    let currentPhase = 'story1';   // story1, breakout, story2, slingshot, ending
+    let currentPhase = 'story1';
     let breakoutGame = null;
     let slingshotGame = null;
     
     let story1Index = 0;
     let story2Index = 0;
     let endingIndex = 0;
+    
+    // 多结局得分记录
+    let breakoutScoreValue = 0;   // 打砖块得分 = lives * score
+    let slingshotScoreValue = 0;   // 投石得分 = remainingAttempts * hits
+    let totalScore = 0;
+    
+    // 结局阈值 (总分)
+    const HIGH_SCORE_THRESHOLD = 800;   // True End
+    const LOW_SCORE_THRESHOLD = 300;    // Bad End, 中间为Normal End
+    
+    // 结局脚本 (动态填充)
+    let currentEndingScript = [];
     
     const dialogueBox = document.getElementById('dialogueBox');
     const speakerSpan = document.getElementById('speakerName');
@@ -236,41 +245,82 @@
     const settleAnimDiv = document.getElementById('settleCanvas');
     const forceWinBtn = document.getElementById('forceWinBtn');
     
-    // ========================= 剧情脚本（虚构历史） =========================
+    // ========================= 剧情脚本 =========================
     const story1Script = [
         { speaker: "司令部", msg: "「李中将，情报部门确认，副统帅正在秘密策划叛逃。」" },
-        { speaker: "李中将", msg: "「绝不可能！他是共和国的支柱，我跟随他南征北战，他怎么会叛逃？」" },
-        { speaker: "司令部", msg: "「证据确凿。他早已谋划抢班夺权，野心勃勃。」" },
-        { speaker: "李中将", msg: "「你们这是污蔑！我要向中央申诉！」" },
-        { speaker: "司令部", msg: "「冷静点，李中将。事实胜于雄辩。如果你不信，就看看这些‘证据’——每块都是他的罪证！」" },
-        { speaker: "系统", msg: "「⚡『信仰的争辩』⚡ 击碎所有罪证指控，为老上司辩护！」" }
+        { speaker: "李中将", msg: "「绝不可能！他是国家支柱，我跟随他多年，深知他的革命意志，他怎么会叛逃？」" },
+        { speaker: "司令部", msg: "「证据确凿。他一直在谋划抢班夺权，野心勃勃。」" },
+        { speaker: "李中将", msg: "「你们这是污蔑！我要向最高层申诉！」" },
+        { speaker: "司令部", msg: "「冷静点，李中将。事实胜于雄辩。如果你不信，就看看这些‘证据’——这都是他的罪证！」" },
+        { speaker: "系统", msg: "「⚡『信仰的争辩』⚡ 击碎所有罪证，为老上司辩护！」" }
     ];
     
     const story2Script = [
         { speaker: "系统", msg: "「李中将回到家中，电话铃声骤然响起……」" },
-        { speaker: "副统帅", msg: "「小李，是我。我需要你安排一架飞机，今晚就走。」" },
-        { speaker: "李中将", msg: "「首长……您、您真的……？」" },
-        { speaker: "副统帅", msg: "「别问那么多。就当帮我最后一次。」" },
+        { speaker: "副统帅", msg: "「小李，是我。」" },
+        { speaker: "李中将", msg: "「首长？你在哪里？我……」" },
+        { speaker: "副统帅", msg: "「我需要你安排一架飞机，今晚就走。」" },
+        { speaker: "李中将", msg: "「首长……您、您真的……到底发生了什么？」" },
+        { speaker: "老上司", msg: "「别问那么多。就当帮我最后一次。」" },
         { speaker: "李中将", msg: "「（沉默良久）……好，我安排。」" },
         { speaker: "系统", msg: "「挂断电话后，李中将痛苦地握紧拳头。他思量再三，决定报告总理。」" },
         { speaker: "总理", msg: "「李中将，你做得对。现在立刻回指挥部待命，密切监视那架飞机。」" },
         { speaker: "系统", msg: "「李中将返回空军指挥部，雷达上，那架飞机已经起飞。」" },
         { speaker: "李中将", msg: "「总理，是否击落？」" },
-        { speaker: "总理", msg: "「李中将，在我回答你之前，我先要问你，是否击落呢？」" },
+        { speaker: "总理", msg: "「在我回答你之前，我要问你个问题，请问是否要击落呢？」" },
         { speaker: "系统", msg: "「⚡『拦截的抉择』⚡ 点击画面发射‘拦截信号’，击中飞机三次即可阻止叛逃。但……你真的要击落吗？」" }
     ];
     
-    const endingScript = [
-        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）……我们是不是应该请示主席？」" },
-        { speaker: "总理", msg: "「粉碎反革命阴谋，可是万世奇功，你可想好了？」" },
-        { speaker: "李中将", msg: "「（沉默片刻）我需要主席的指示。」" },
+    // 三个结局脚本
+    const trueEndingScript = [
+        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
+        { speaker: "总理", msg: "「粉碎反革命阴谋，可是不世功勋，国家和人民都会记得你的贡献，你可想好了？」" },
+        { speaker: "李中将", msg: "「（深吸一口气）我需要主席的指示。」" },
         { speaker: "接线员", msg: "「总理，主席来电。」" },
-        { speaker: "主席", msg: "「事情我都听说了，天要下雨，娘要嫁人，随他去吧。」" },
-        { speaker: "总理", msg: "「（盯了你一眼）好的。」" },
+        { speaker: "主席", msg: "「事情我都知道了，天要下雨，娘要嫁人，随他去吧。」" },
+        { speaker: "总理", msg: "「（盯着李中将，意味深长）是，主席。」" },
         { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
         { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
         { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
-        { speaker: "系统", msg: "「真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。—— GAME CLEAR ——」" }
+        { speaker: "系统", msg: "「二十年后，年迈的李中将与尚在人世的战友们来到邻国的那片荒野。」" },
+        { speaker: "李中将", msg: "「老首长，我们来看你了……」" },
+        { speaker: "系统", msg: "「一架民航飞机从头顶掠过，夕阳染红了天际。一位老战友缓缓走来。」" },
+        { speaker: "战友", msg: "「老李，历史已经给出了答案。」" },
+        { speaker: "李中将", msg: "「我还是不能相信。」" },
+        { speaker: "战友", msg: "「其实我也不能。」" },
+        { speaker: "系统", msg: "「战友们站在坠机遗址前，沉默良久。风掠过草原，老首长仍如当年那样沉默。」" },
+        { speaker: "系统", msg: "「—— TRUE END —— 忠诚的守望者」" }
+    ];
+    
+    const normalEndingScript = [
+        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
+        { speaker: "总理", msg: "「粉碎反革命阴谋，可是不世功勋，国家和人民都会记得你的贡献，你可想好了？」" },
+        { speaker: "李中将", msg: "「（深吸一口气）我需要主席的指示。」" },
+        { speaker: "接线员", msg: "「总理，主席来电。」" },
+        { speaker: "主席", msg: "「事情我都知道了，天要下雨，娘要嫁人，随他去吧。」" },
+        { speaker: "总理", msg: "「（盯着李中将，意味深长）是，主席。」" },
+        { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
+        { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
+        { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
+        { speaker: "系统", msg: "「真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。—— NORMAL END ——」" }
+    ];
+    
+    const badEndingScript = [
+        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
+        { speaker: "总理", msg: "「粉碎反革命阴谋，可是不世功勋，国家和人民都会记得你的贡献，你可想好了？」" },
+        { speaker: "李中将", msg: "「（深吸一口气）我需要主席的指示。」" },
+        { speaker: "接线员", msg: "「总理，主席来电。」" },
+        { speaker: "主席", msg: "「事情我都知道了，天要下雨，娘要嫁人，随他去吧。」" },
+        { speaker: "总理", msg: "「（盯着李中将，意味深长）是，主席。」" },
+        { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
+        { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
+        { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
+        { speaker: "系统", msg: "「真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。" },
+        { speaker: "系统", msg: "「事件过后，李中将因‘反革命同谋罪’被逮捕。」" },
+        { speaker: "审判员", msg: "「李中将，你私自为叛逃者提供飞机，拒绝总理指令，证据确凿，你还有什么话说？」" },
+        { speaker: "李中将", msg: "「……无话可说，我要见主席。」" },
+        { speaker: "系统", msg: "「他被剥夺军衔，关入监狱。生命从此失去了阳光。」" },
+        { speaker: "系统", msg: "「人总会变，英雄也不例外。—— BAD END ——」" }
     ];
     
     function setDialogue(speaker, msg) {
@@ -283,18 +333,26 @@
         }
     }
     
-    // 争辩台词
+    // 扩充争辩台词库（打砖块）
     const debateHeroLines = [
         "「他救过无数战士！是英雄！」",
-        "「那些所谓的‘证据’一定是伪造的！」",
-        "「我绝不相信副统帅会成为叛徒！」",
-        "「你们根本不了解他的功勋！」"
+        "「那些所谓的‘证据’一定有问题！」",
+        "「我绝不相信老首长会成为叛徒！」",
+        "「你们根本不了解他的功勋！」",
+        "「当年是他带着我们解放了全国，他怎么可能叛变？」",
+        "「这份情报一定是敌人的离间计！」",
+        "「我要见最高层，当面质证！」",
+        "「老首长的为人，我比你们任何人都清楚！」"
     ];
     const debateEnemyLines = [
         "「权力使人腐化，你太天真了。」",
         "「他早有异心，只是你被蒙蔽。」",
         "「证据确凿，不要再固执了。」",
-        "「你以为开国英雄就不会背叛吗？」"
+        "「他的种种作为，你难道还不清楚吗？」",
+        "「人都是会变的，李中将。」",
+        "「你已经被私人感情冲昏头脑了。」",
+        "「这是组织的决定，不容置疑。」",
+        "「国家利益和你私人恩惠孰轻孰重？」"
     ];
     function getRandomHeroLine() { return debateHeroLines[Math.floor(Math.random() * debateHeroLines.length)]; }
     function getRandomEnemyLine() { return debateEnemyLines[Math.floor(Math.random() * debateEnemyLines.length)]; }
@@ -305,18 +363,26 @@
         else setDialogue("司令部", getRandomEnemyLine());
     }
     
-    // 拦截台词
+    // 扩充拦截台词库（投石）
     const interceptHeroLines = [
         "「真的要击落吗……？」",
-        "「他对我恩重如山……」",
+        "「老首长，你到底是为什么……」",
         "「这是叛国，还是……另一种忠诚？」",
-        "「手指在颤抖……下不去手。」"
+        "「手指在颤抖……下不去手。」",
+        "「如果他是被冤枉的呢？」",
+        "「我这一生，从未如此犹豫过。」",
+        "「总理……我……做不到。」",
+        "「放走他，我会成为罪人吗？」"
     ];
     const interceptEnemyLines = [
         "「叛徒必须受到制裁！」",
         "「放走他，你也是同谋！」",
         "「国家利益高于一切！」",
-        "「你也要当反革命吗！」"
+        "「还犹豫什么？马上击落！」",
+        "「快下令！否则来不及了！」",
+        "「李中将，你还在等什么？」",
+        "「军人的天职就是服从！」",
+        "「你不下命令，我来！」"
     ];
     function getRandomInterceptHero() { return interceptHeroLines[Math.floor(Math.random() * interceptHeroLines.length)]; }
     function getRandomInterceptEnemy() { return interceptEnemyLines[Math.floor(Math.random() * interceptEnemyLines.length)]; }
@@ -355,7 +421,11 @@
         slingWrapper.classList.add('hide');
         slingshotStatsDiv.classList.add('hide');
         if (breakoutGame) breakoutGame.stopGame();
-        if (slingshotGame) { slingshotGame.gameActive = false; slingshotGame.animating = false; if(slingshotGame.removeClickHandler) slingshotGame.removeClickHandler(); }
+        if (slingshotGame) { 
+            slingshotGame.gameActive = false; 
+            slingshotGame.animating = false; 
+            if(slingshotGame.removeClickHandler) slingshotGame.removeClickHandler(); 
+        }
     }
     
     // ========================= 剧情推进 =========================
@@ -379,17 +449,35 @@
             startSlingshotPhase();
         }
     }
+    
+    // 根据总分选择结局脚本并开始播放
+    function startEndingBasedOnScore() {
+        totalScore = breakoutScoreValue + slingshotScoreValue;
+        if (totalScore >= HIGH_SCORE_THRESHOLD) {
+            currentEndingScript = trueEndingScript;
+        } else if (totalScore >= LOW_SCORE_THRESHOLD) {
+            currentEndingScript = normalEndingScript;
+        } else {
+            currentEndingScript = badEndingScript;
+        }
+        endingIndex = 0;
+        currentPhase = 'ending';
+        advanceEnding();
+    }
+    
     function advanceEnding() {
-        if (endingIndex < endingScript.length) {
-            const line = endingScript[endingIndex];
+        if (endingIndex < currentEndingScript.length) {
+            const line = currentEndingScript[endingIndex];
             setDialogue(line.speaker, line.msg);
             endingIndex++;
         } else {
-            actionButtonsDiv.innerHTML = `<button id="completeRestartBtn">✨ 重新抉择 ✨</button>`;
-            document.getElementById('completeRestartBtn')?.addEventListener('click', () => fullRestart());
+            actionButtonsDiv.innerHTML = `<button id="completeRestartBtn">✨ 重新开始 ✨</button>`;
+            const restartBtn = document.getElementById('completeRestartBtn');
+            if(restartBtn) restartBtn.addEventListener('click', () => fullRestart());
             clickHint.style.display = 'none';
         }
     }
+    
     function onAdvanceInput() {
         if (currentPhase === 'story1') advanceStory1();
         else if (currentPhase === 'story2') advanceStory2();
@@ -398,7 +486,7 @@
     dialogueBox.addEventListener('click', (e) => { e.stopPropagation(); onAdvanceInput(); });
     window.addEventListener('keydown', (e) => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onAdvanceInput(); } });
     
-    // 一键胜利按钮（显性）
+    // 一键胜利按钮
     forceWinBtn.addEventListener('click', () => {
         if (currentPhase === 'breakout' && breakoutGame && breakoutGame.gameActive) {
             breakoutGame.forceWin();
@@ -414,7 +502,6 @@
         constructor(canvasId) {
             this.canvas = document.getElementById(canvasId);
             this.ctx = this.canvas.getContext('2d');
-            // 固定逻辑分辨率 900x500
             this.width = 900;
             this.height = 500;
             this.canvas.width = this.width;
@@ -446,7 +533,6 @@
                 for(let c=0; c<this.cols; c++) this.bricks[r][c] = { active: true, color: this.brickColors[r%this.brickColors.length] };
             }
         }
-        // 移动端触摸拖拽 + 鼠标拖拽
         attachMobileEvents() {
             const getPaddleXFromClient = (clientX) => {
                 const rect = this.canvas.getBoundingClientRect();
@@ -459,9 +545,7 @@
                 if(!this.gameActive) return;
                 e.preventDefault();
                 const touch = e.touches[0];
-                if(touch) {
-                    this.paddleX = getPaddleXFromClient(touch.clientX);
-                }
+                if(touch) this.paddleX = getPaddleXFromClient(touch.clientX);
             };
             const onMouseMove = (e) => {
                 if(!this.gameActive) return;
@@ -561,25 +645,33 @@
     }
     
     async function showBreakoutWinUI(forced) {
+        // 计算打砖块得分：剩余生命 * 击碎砖块得分
+        if(breakoutGame) {
+            breakoutScoreValue = breakoutGame.lives * breakoutGame.score;
+        }
         hideGameUI();
         await showSettleAnimation(true);
         setDialogue("系统", forced ? "「李中将用信念击碎了所有质疑。」" : "「争辩胜利，但李中将内心仍不平静。」");
         actionButtonsDiv.innerHTML = `<button id="continueStoryBtn">✨ 继续剧情 ✨</button><button id="restartGameBtn">🔄 重新争辩</button>`;
-        document.getElementById('continueStoryBtn')?.addEventListener('click', () => {
+        const continueBtn = document.getElementById('continueStoryBtn');
+        const restartBtn = document.getElementById('restartGameBtn');
+        if(continueBtn) continueBtn.addEventListener('click', () => {
             actionButtonsDiv.innerHTML = '';
             currentPhase = 'story2';
             story2Index = 0;
             advanceStory2();
         });
-        document.getElementById('restartGameBtn')?.addEventListener('click', () => fullRestart());
+        if(restartBtn) restartBtn.addEventListener('click', () => fullRestart());
     }
     async function showBreakoutLoseUI() {
         hideGameUI();
         await showSettleAnimation(false);
         setDialogue("司令部", "「李中将，你已经被感情蒙蔽了双眼。」");
         actionButtonsDiv.innerHTML = `<button id="retryLevelBtn">⚔️ 再次辩护 ⚔️</button><button id="fullRestartBtn">🌀 重启故事</button>`;
-        document.getElementById('retryLevelBtn')?.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; restartBreakoutLevel(); });
-        document.getElementById('fullRestartBtn')?.addEventListener('click', () => fullRestart());
+        const retryBtn = document.getElementById('retryLevelBtn');
+        const restartBtn = document.getElementById('fullRestartBtn');
+        if(retryBtn) retryBtn.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; restartBreakoutLevel(); });
+        if(restartBtn) restartBtn.addEventListener('click', () => fullRestart());
     }
     function restartBreakoutLevel() {
         if(breakoutGame) breakoutGame.destroy();
@@ -605,7 +697,7 @@
         clickHint.style.display = 'none';
     }
     
-    // ========================= 投石游戏·移动端点击发射（抛物线物理） =========================
+    // ========================= 投石游戏·移动目标+20次机会 =========================
     class SlingshotGame {
         constructor(canvasId) {
             this.canvas = document.getElementById(canvasId);
@@ -613,8 +705,13 @@
             this.width = 900; this.height = 500;
             this.canvas.width = this.width; this.canvas.height = this.height;
             this.target = { x: 720, y: 180, radius: 30 };
+            this.targetDir = -1;
+            this.targetSpeed = 2.5;
+            this.targetMinX = 550;
+            this.targetMaxX = 820;
             this.slingPos = { x: 140, y: 380 };
-            this.hits = 0; this.misses = 0; this.remainingAttempts = 5;
+            this.hits = 0;
+            this.remainingAttempts = 20;
             this.gameActive = true;
             this.animating = false;
             this.stone = null;
@@ -631,6 +728,15 @@
             this.updateStatsUI();
             this.f3Handler = (e) => { if(e.code === 'F3') { e.preventDefault(); this.forceWin(); } };
             window.addEventListener('keydown', this.f3Handler);
+            this.moveInterval = setInterval(() => this.updateTargetPosition(), 30);
+        }
+        
+        updateTargetPosition() {
+            if(!this.gameActive || this.animating) return;
+            this.target.x += this.targetDir * this.targetSpeed;
+            if(this.target.x <= this.targetMinX) { this.target.x = this.targetMinX; this.targetDir = 1; }
+            if(this.target.x >= this.targetMaxX) { this.target.x = this.targetMaxX; this.targetDir = -1; }
+            if(!this.animating) this.drawStatic();
         }
         
         drawStatic() {
@@ -649,13 +755,12 @@
         
         updateStatsUI() {
             document.getElementById('hitCount').innerText = this.hits;
-            document.getElementById('missCount').innerText = this.misses;
             document.getElementById('remainAttempts').innerText = this.remainingAttempts;
         }
         
         handleCanvasClick(e) {
             if(!this.gameActive || this.animating) return;
-            if(this.remainingAttempts <= 0 || this.hits>=3 || this.misses>=3) return;
+            if(this.remainingAttempts <= 0 || this.hits >= 3) return;
             const rect = this.canvas.getBoundingClientRect();
             const scaleX = this.width / rect.width;
             const scaleY = this.height / rect.height;
@@ -663,11 +768,11 @@
             let clickY = (e.clientY - rect.top) * scaleY;
             const dx = clickX - this.slingPos.x;
             const dy = clickY - this.slingPos.y;
-            let vx = dx * 0.45;
-            let vy = dy * 0.45;
+            let vx = dx * 0.85;
+            let vy = dy * 0.85;
             const speed = Math.hypot(vx, vy);
-            if(speed < 3) { setDialogue("系统", "「力度太小，信号无法发射。」"); return; }
-            if(speed > 14) { vx = vx * (14/speed); vy = vy * (14/speed); }
+            if(speed < 4) { setDialogue("系统", "「力度太小，信号无法发射。」"); return; }
+            if(speed > 24) { vx = vx * (24/speed); vy = vy * (24/speed); }
             this.launchStone(vx, vy);
         }
         
@@ -696,13 +801,11 @@
                         this.hits++;
                         setDialogue("李中将", "「拦截信号命中！但我真的想击落吗…」");
                         speakIntercept();
-                    } else if(!hit && this.stone.y > this.height+30) {
-                        this.misses++;
+                    } else if(!hit) {
                         setDialogue("指挥部", "「信号偏离！快继续拦截！」");
                         speakIntercept();
                         this.hitProcessed = true;
                     } else {
-                        if(!hit) { this.misses++; setDialogue("指挥部", "「拦截失败！飞机正在远离！」"); speakIntercept(); }
                         this.hitProcessed = true;
                     }
                     if(this.hitProcessed) {
@@ -711,9 +814,11 @@
                         this.stone = null;
                         if(this.hits >= 3) {
                             this.gameActive = false;
+                            clearInterval(this.moveInterval);
                             showSlingshotWin();
-                        } else if(this.misses >= 3 || (this.remainingAttempts === 0 && this.hits < 3)) {
+                        } else if(this.remainingAttempts === 0 && this.hits < 3) {
                             this.gameActive = false;
+                            clearInterval(this.moveInterval);
                             showSlingshotLose();
                         } else {
                             this.animating = false;
@@ -734,6 +839,7 @@
                     this.updateStatsUI();
                     if(this.hits >= 3) {
                         this.gameActive = false;
+                        clearInterval(this.moveInterval);
                         showSlingshotWin();
                         return;
                     }
@@ -751,44 +857,76 @@
         forceWin() {
             if(!this.gameActive) return;
             this.hits = 3;
+            this.remainingAttempts = Math.max(0, this.remainingAttempts);
             this.gameActive = false;
             this.updateStatsUI();
+            clearInterval(this.moveInterval);
             showSlingshotWin();
         }
         
         removeClickHandler() { 
             this.canvas.removeEventListener('click', this.clickHandler);
-            // 移除touchstart监听需要保存引用，这里简单重置
         }
-        destroy() { this.removeClickHandler(); if(this.f3Handler) window.removeEventListener('keydown', this.f3Handler); }
+        destroy() { 
+            this.removeClickHandler(); 
+            if(this.f3Handler) window.removeEventListener('keydown', this.f3Handler);
+            if(this.moveInterval) clearInterval(this.moveInterval);
+        }
+        resetGame() {
+            this.hits = 0;
+            this.remainingAttempts = 20;
+            this.gameActive = true;
+            this.animating = false;
+            this.stone = null;
+            this.updateStatsUI();
+            this.drawStatic();
+            setDialogue("李中将", "「再一次……这次一定要阻止他？」");
+            if(this.moveInterval) clearInterval(this.moveInterval);
+            this.moveInterval = setInterval(() => this.updateTargetPosition(), 30);
+        }
     }
     
     async function showSlingshotWin() {
+        // 计算投石得分：剩余次数 * 命中次数 (命中次数最多3)
+        if(slingshotGame) {
+            slingshotScoreValue = slingshotGame.remainingAttempts * slingshotGame.hits;
+        }
         hideGameUI();
         await showSettleAnimation(true);
         setDialogue("系统", "「拦截信号三次命中飞机。但李中将最终选择了放弃击落。」");
-        actionButtonsDiv.innerHTML = `<button id="endingBtn">🌟 走向结局 🌟</button><button id="restartAllBtn">🔄 重启故事</button>`;
-        document.getElementById('endingBtn')?.addEventListener('click', () => {
+        actionButtonsDiv.innerHTML = `<button id="endingBtn">🌟 见证结局 🌟</button><button id="restartAllBtn">🔄 重启故事</button>`;
+        const endingBtn = document.getElementById('endingBtn');
+        const restartBtn = document.getElementById('restartAllBtn');
+        if(endingBtn) endingBtn.addEventListener('click', () => {
             actionButtonsDiv.innerHTML = '';
-            currentPhase = 'ending';
-            endingIndex = 0;
-            advanceEnding();
+            startEndingBasedOnScore();
         });
-        document.getElementById('restartAllBtn')?.addEventListener('click', () => fullRestart());
+        if(restartBtn) restartBtn.addEventListener('click', () => fullRestart());
     }
     async function showSlingshotLose() {
         hideGameUI();
         await showSettleAnimation(false);
         setDialogue("系统", "「拦截信号未能阻止飞机，它消失在夜空中……」");
-        actionButtonsDiv.innerHTML = `<button id="retrySlingshotBtn">💪 重新拦截 💪</button><button id="globalRestartBtn">🌋 完全重启</button>`;
-        document.getElementById('retrySlingshotBtn')?.addEventListener('click', () => {
+        actionButtonsDiv.innerHTML = `<button id="retrySlingshotBtn">💪 重新拦截 💪</button>
+                                      <button id="acceptBadEndBtn">⚠️ 接受结局（低分）⚠️</button>
+                                      <button id="globalRestartBtn">🌋 完全重启</button>`;
+        const retryBtn = document.getElementById('retrySlingshotBtn');
+        const acceptBtn = document.getElementById('acceptBadEndBtn');
+        const restartBtn = document.getElementById('globalRestartBtn');
+        if(retryBtn) retryBtn.addEventListener('click', () => {
             slingshotGame.resetGame();
             actionButtonsDiv.innerHTML = '';
             slingWrapper.classList.remove('hide');
             slingshotStatsDiv.classList.remove('hide');
             slingshotGame.gameActive = true;
         });
-        document.getElementById('globalRestartBtn')?.addEventListener('click', () => fullRestart());
+        if(acceptBtn) acceptBtn.addEventListener('click', () => {
+            // 投石得分为0
+            slingshotScoreValue = 0;
+            actionButtonsDiv.innerHTML = '';
+            startEndingBasedOnScore();
+        });
+        if(restartBtn) restartBtn.addEventListener('click', () => fullRestart());
     }
     
     function startSlingshotPhase() {
@@ -802,23 +940,35 @@
         clickHint.style.display = 'none';
     }
     
-    // ========================= 完全重启 =========================
+    // ========================= 完全重启（重置所有得分） =========================
     function fullRestart() {
         if(breakoutGame) breakoutGame.destroy();
         if(slingshotGame) slingshotGame.destroy();
         story1Index=0; story2Index=0; endingIndex=0;
+        breakoutScoreValue = 0;
+        slingshotScoreValue = 0;
+        totalScore = 0;
         currentPhase='story1';
         hideGameUI();
         actionButtonsDiv.innerHTML = `<button id="startStoryBtn">🎭 开始故事 🎭</button>`;
-        setDialogue("作战指挥部", "「李中将，紧急情报……请立即到指挥部。」");
+        setDialogue("作战指挥部", "「李中将，紧急情报，请立即到司令部。」");
         clickHint.style.display = 'block';
         const startBtn = document.getElementById('startStoryBtn');
-        if(startBtn) startBtn.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; story1Index=0; advanceStory1(); });
-        if(!startBtn) {
+        if(startBtn) {
+            startBtn.addEventListener('click', () => { 
+                actionButtonsDiv.innerHTML=''; 
+                story1Index=0; 
+                advanceStory1(); 
+            });
+        } else {
             const newBtn = document.createElement('button');
             newBtn.id='startStoryBtn'; newBtn.innerText='🎭 开始故事 🎭';
             actionButtonsDiv.innerHTML=''; actionButtonsDiv.appendChild(newBtn);
-            newBtn.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; story1Index=0; advanceStory1(); });
+            newBtn.addEventListener('click', () => { 
+                actionButtonsDiv.innerHTML=''; 
+                story1Index=0; 
+                advanceStory1(); 
+            });
         }
     }
     
