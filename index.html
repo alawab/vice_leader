@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>抉择·折戟沉沙</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(145deg, #0a0f1e 0%, #0c1222 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Poppins', 'Impact', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .game-container {
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(3px);
+            border-radius: 56px;
+            padding: 20px 24px 28px;
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 180, 60, 0.3);
+        }
+
+        .dialogue-area {
+            background: #010514e0;
+            border-left: 6px solid #f5a623;
+            border-radius: 28px;
+            padding: 14px 22px;
+            margin-bottom: 20px;
+            color: #ffecb3;
+            font-weight: bold;
+            text-shadow: 0 2px 2px black;
+            backdrop-filter: blur(8px);
+            font-size: 1.2rem;
+            letter-spacing: 1px;
+            min-height: 85px;
+            cursor: pointer;
+        }
+
+        .speaker {
+            color: #ffb347;
+            font-size: 1rem;
+            font-weight: 800;
+            margin-right: 12px;
+            display: inline-block;
+        }
+
+        .dialogue-text {
+            display: inline;
+            word-break: break-word;
+        }
+
+        .canvas-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            border-radius: 32px;
+            background: #00000066;
+            padding: 8px;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 24px;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6);
+            cursor: pointer;
+            background: #11161f;
+        }
+
+        .action-bar {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        button {
+            background: radial-gradient(circle at 30% 10%, #f7b42c, #fc7a1e);
+            border: none;
+            color: #1f1a0c;
+            font-weight: bold;
+            font-size: 1rem;
+            padding: 8px 24px;
+            border-radius: 60px;
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: 800;
+            letter-spacing: 2px;
+            box-shadow: 0 5px 0 #8b3c00;
+            transition: 0.07s linear;
+        }
+
+        button:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #8b3c00;
+        }
+
+        .info-panel {
+            background: #000000aa;
+            border-radius: 40px;
+            padding: 8px 18px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            color: #ffd966;
+            font-weight: bold;
+            backdrop-filter: blur(4px);
+        }
+
+        .hide {
+            display: none;
+        }
+
+        .click-hint {
+            font-size: 0.7rem;
+            color: #ffaa66;
+            text-align: right;
+            margin-top: 6px;
+            font-style: italic;
+        }
+
+        .settle-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .particle {
+            position: absolute;
+            background: radial-gradient(circle, #ffcc44, #ff8844);
+            border-radius: 50%;
+            opacity: 0.8;
+            animation: burst 1s ease-out forwards;
+        }
+
+        @keyframes burst {
+            0% { transform: scale(0.2) translate(0, 0); opacity: 1; }
+            100% { transform: scale(1.5) translate(var(--dx, 50px), var(--dy, -80px)); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="dialogue-area" id="dialogueBox">
+        <span class="speaker" id="speakerName">⚡ 作战指挥部</span>
+        <span class="dialogue-text" id="dialogueMsg">「李中将，情报确认……副统帅即将叛逃。」</span>
+        <div class="click-hint" id="clickHint">▼ 点击或按空格继续 ▼</div>
+    </div>
+
+    <div id="breakoutWrapper" class="canvas-wrapper">
+        <canvas id="breakoutCanvas" width="900" height="500" style="width:900px;height:500px"></canvas>
+    </div>
+
+    <div id="slingWrapper" class="canvas-wrapper hide">
+        <canvas id="slingCanvas" width="900" height="500" style="width:900px;height:500px"></canvas>
+    </div>
+
+    <div id="slingshotStats" class="info-panel hide">
+        <span>🎯 命中: <span id="hitCount">0</span> / 3</span>
+        <span>💔 失误: <span id="missCount">0</span> / 3</span>
+        <span>🪨 剩余拦截次数: <span id="remainAttempts">5</span></span>
+        <span>✈️ 点击Canvas发射拦截信号</span>
+    </div>
+
+    <div id="actionButtons" class="action-bar"></div>
+</div>
+<div id="settleCanvas" class="settle-animation"></div>
+
+<script>
+    // ========================= 全局状态 =========================
+    let currentPhase = 'story1';   // story1, breakout, story2, slingshot, ending
+    let breakoutGame = null;
+    let slingshotGame = null;
+    
+    let story1Index = 0;
+    let story2Index = 0;
+    let endingIndex = 0;
+    
+    const dialogueBox = document.getElementById('dialogueBox');
+    const speakerSpan = document.getElementById('speakerName');
+    const dialogueMsgSpan = document.getElementById('dialogueMsg');
+    const clickHint = document.getElementById('clickHint');
+    const breakoutWrapper = document.getElementById('breakoutWrapper');
+    const slingWrapper = document.getElementById('slingWrapper');
+    const slingshotStatsDiv = document.getElementById('slingshotStats');
+    const actionButtonsDiv = document.getElementById('actionButtons');
+    const settleAnimDiv = document.getElementById('settleCanvas');
+    
+    // ========================= 剧情脚本（虚构历史） =========================
+    const story1Script = [
+        { speaker: "司令部", msg: "「李中将，情报部门确认，你的老上司——那位开国英雄副统帅，正在秘密策划叛逃。」" },
+        { speaker: "李中将", msg: "「绝不可能！他是共和国的支柱，我跟随他南征北战，他怎么会叛逃？」" },
+        { speaker: "司令部", msg: "「证据确凿。他早已筹谋夺权，野心勃勃。」" },
+        { speaker: "李中将", msg: "「你们这是污蔑！我要向最高层申诉！」" },
+        { speaker: "司令部", msg: "「冷静点，李中将。事实胜于雄辩。如果你不信，就看看这些‘证据’——每块都是他的罪证！」" },
+        { speaker: "系统", msg: "「⚡『信仰的争辩』⚡ 击碎所有罪证砖块，为副统帅辩护吧！」" }
+    ];
+    
+    const story2Script = [
+        { speaker: "系统", msg: "「李中将回到家中，电话铃声骤然响起……」" },
+        { speaker: "副统帅", msg: "「小李，是我。我需要你安排一架飞机，今晚就走。」" },
+        { speaker: "李中将", msg: "「首长……您、您真的……？」" },
+        { speaker: "副统帅", msg: "「别问那么多。就当帮我最后一次。」" },
+        { speaker: "李中将", msg: "「（沉默良久）……好，我安排。」" },
+        { speaker: "系统", msg: "「挂断电话后，李中将痛苦地握紧拳头。他思量再三，决定报告总理。」" },
+        { speaker: "总理", msg: "「李中将，你做得对。现在立刻回指挥部待命，密切监视那架飞机。」" },
+        { speaker: "系统", msg: "「李中将返回空军指挥部，雷达上，那架飞机已经起飞。」" },
+        { speaker: "李中将", msg: "「总理……是否击落？」" },
+        { speaker: "总理", msg: "「你是指挥官，由你决定，主席那边我来解释。」" },
+        { speaker: "系统", msg: "「⚡『拦截的抉择』⚡ 点击发射‘拦截信号’，击中飞机三次即可阻止叛逃。但……你真的要击落吗？」" }
+    ];
+    
+    const endingScript = [
+        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）。」" },
+        { speaker: "总理", msg: "「李中将，他可是反革命，你确定？」" },
+        { speaker: "李中将", msg: "「我们是不是应该询问主席的意见？」" },
+        { speaker: "系统", msg: "「接线员：总理，是主席来电。」" },
+        { speaker: "主席", msg: "「天要下雨，娘要嫁人，随他去吧。」" },
+        { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
+        { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
+        { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
+        { speaker: "系统", msg: "「真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。—— GAME CLEAR ——」" }
+    ];
+    
+    function setDialogue(speaker, msg) {
+        speakerSpan.innerText = speaker;
+        dialogueMsgSpan.innerText = msg;
+        if (currentPhase === 'story1' || currentPhase === 'story2' || currentPhase === 'ending') {
+            clickHint.style.display = 'block';
+        } else {
+            clickHint.style.display = 'none';
+        }
+    }
+    
+    // 争辩台词（打砖块过程中）
+    const debateHeroLines = [
+        "「他救过无数战士！是英雄！」",
+        "「那些所谓的‘证据’一定是伪造的！」",
+        "「我绝不相信老首长为叛徒！」",
+        "「你们根本不了解他的功勋！」"
+    ];
+    const debateEnemyLines = [
+        "「权力使人腐化，你太天真了。」",
+        "「他早有异心，只是你被蒙蔽。」",
+        "「证据确凿，不要再固执了。」",
+        "「你以为开国英雄就不会背叛吗？」"
+    ];
+    function getRandomHeroLine() { return debateHeroLines[Math.floor(Math.random() * debateHeroLines.length)]; }
+    function getRandomEnemyLine() { return debateEnemyLines[Math.floor(Math.random() * debateEnemyLines.length)]; }
+    function speakDebate() {
+        if (currentPhase !== 'breakout') return;
+        const isHero = Math.random() > 0.5;
+        if (isHero) setDialogue("李中将", getRandomHeroLine());
+        else setDialogue("司令部", getRandomEnemyLine());
+    }
+    
+    // 拦截台词（投石游戏）
+    const interceptHeroLines = [
+        "「真的要击落吗……？」",
+        "「他是我的恩师啊……」",
+        "「这是叛国，还是……另一种忠诚？」",
+        "「手指在颤抖……下不去手。」"
+    ];
+    const interceptEnemyLines = [
+        "「叛徒必须受到制裁！」",
+        "「放走他，你也是同谋！」",
+        "「国家利益高于一切！」",
+        "「犹豫就会败北！」"
+    ];
+    function getRandomInterceptHero() { return interceptHeroLines[Math.floor(Math.random() * interceptHeroLines.length)]; }
+    function getRandomInterceptEnemy() { return interceptEnemyLines[Math.floor(Math.random() * interceptEnemyLines.length)]; }
+    function speakIntercept() {
+        if (currentPhase !== 'slingshot') return;
+        const isHero = Math.random() > 0.5;
+        if (isHero) setDialogue("李中将", getRandomInterceptHero());
+        else setDialogue("指挥部", getRandomInterceptEnemy());
+    }
+    
+    // 结算动画
+    function showSettleAnimation(win) {
+        return new Promise((resolve) => {
+            for (let i = 0; i < 60; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                const size = Math.random() * 15 + 5;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.left = `${Math.random() * window.innerWidth}px`;
+                particle.style.top = `${Math.random() * window.innerHeight}px`;
+                const dx = (Math.random() - 0.5) * 200;
+                const dy = (Math.random() - 0.5) * 200 - 50;
+                particle.style.setProperty('--dx', `${dx}px`);
+                particle.style.setProperty('--dy', `${dy}px`);
+                particle.style.background = win ? `radial-gradient(circle, #ffdd77, #ff8844)` : `radial-gradient(circle, #aa88ff, #5533aa)`;
+                settleAnimDiv.appendChild(particle);
+                setTimeout(() => particle.remove(), 1000);
+            }
+            setTimeout(resolve, 800);
+        });
+    }
+    
+    function hideGameUI() {
+        breakoutWrapper.classList.add('hide');
+        slingWrapper.classList.add('hide');
+        slingshotStatsDiv.classList.add('hide');
+        if (breakoutGame) breakoutGame.stopGame();
+        if (slingshotGame) { slingshotGame.gameActive = false; slingshotGame.animating = false; if(slingshotGame.removeClickHandler) slingshotGame.removeClickHandler(); }
+    }
+    
+    // ========================= 剧情推进 =========================
+    function advanceStory1() {
+        if (story1Index < story1Script.length) {
+            const line = story1Script[story1Index];
+            setDialogue(line.speaker, line.msg);
+            story1Index++;
+        } else {
+            currentPhase = 'breakout';
+            startBreakoutPhase();
+        }
+    }
+    function advanceStory2() {
+        if (story2Index < story2Script.length) {
+            const line = story2Script[story2Index];
+            setDialogue(line.speaker, line.msg);
+            story2Index++;
+        } else {
+            currentPhase = 'slingshot';
+            startSlingshotPhase();
+        }
+    }
+    function advanceEnding() {
+        if (endingIndex < endingScript.length) {
+            const line = endingScript[endingIndex];
+            setDialogue(line.speaker, line.msg);
+            endingIndex++;
+        } else {
+            actionButtonsDiv.innerHTML = `<button id="completeRestartBtn">✨ 重新抉择 ✨</button>`;
+            document.getElementById('completeRestartBtn')?.addEventListener('click', () => fullRestart());
+            clickHint.style.display = 'none';
+        }
+    }
+    function onAdvanceInput() {
+        if (currentPhase === 'story1') advanceStory1();
+        else if (currentPhase === 'story2') advanceStory2();
+        else if (currentPhase === 'ending') advanceEnding();
+    }
+    dialogueBox.addEventListener('click', (e) => { e.stopPropagation(); onAdvanceInput(); });
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onAdvanceInput(); } });
+    
+    // ========================= 打砖块游戏（争辩版） =========================
+    class BreakoutGame {
+        constructor(canvasId) {
+            this.canvas = document.getElementById(canvasId);
+            this.ctx = this.canvas.getContext('2d');
+            this.width = 900; this.height = 500;
+            this.canvas.width = this.width; this.canvas.height = this.height;
+            this.rows = 6; this.cols = 12;
+            this.brickGap = 2;
+            this.brickWidth = (this.width - 40)/this.cols - this.brickGap;
+            this.brickHeight = 18;
+            this.bricks = [];
+            this.brickColors = ['#e34234','#f39c12','#f1c40f','#2ecc71','#3498db','#9b59b6'];
+            this.paddleWidth = 120; this.paddleHeight = 14;
+            this.paddleX = (this.width - this.paddleWidth)/2;
+            this.paddleY = this.height - 40;
+            this.ballRadius = 7;
+            this.ballX = this.width/2; this.ballY = this.paddleY - 15;
+            this.dx = 3.8; this.dy = -4.2;
+            this.score = 0; this.lives = 3;
+            this.gameActive = true;
+            this.gameLoop = null;
+            this.mouseMoveHandler = null;
+            this.initBricks();
+            this.attachEvents();
+            this.f3Handler = (e) => { if(e.code === 'F3') { e.preventDefault(); this.forceWin(); } };
+            window.addEventListener('keydown', this.f3Handler);
+        }
+        initBricks() {
+            this.bricks = [];
+            for(let r=0; r<this.rows; r++) {
+                this.bricks[r] = [];
+                for(let c=0; c<this.cols; c++) this.bricks[r][c] = { active: true, color: this.brickColors[r%this.brickColors.length] };
+            }
+        }
+        attachEvents() {
+            this.mouseMoveHandler = (e) => {
+                if(!this.gameActive) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width/rect.width;
+                let mouseX = (e.clientX - rect.left)*scaleX;
+                mouseX = Math.min(Math.max(mouseX,0), this.width-this.paddleWidth);
+                this.paddleX = mouseX;
+            };
+            this.canvas.addEventListener('mousemove', this.mouseMoveHandler);
+        }
+        forceWin() {
+            if(!this.gameActive) return;
+            for(let r=0; r<this.rows; r++)
+                for(let c=0; c<this.cols; c++) this.bricks[r][c].active = false;
+            this.gameActive = false;
+            this.stopGame();
+            showBreakoutWinUI(true);
+        }
+        collisionDetection() {
+            for(let r=0; r<this.rows; r++) {
+                for(let c=0; c<this.cols; c++) {
+                    let brick = this.bricks[r][c];
+                    if(brick.active) {
+                        let brickX = c*(this.brickWidth+this.brickGap)+20;
+                        let brickY = r*(this.brickHeight+this.brickGap)+45;
+                        if(this.ballX+this.ballRadius > brickX && this.ballX-this.ballRadius < brickX+this.brickWidth &&
+                           this.ballY+this.ballRadius > brickY && this.ballY-this.ballRadius < brickY+this.brickHeight) {
+                            this.dy = -this.dy;
+                            brick.active = false;
+                            this.score += 10;
+                            speakDebate();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        update() {
+            if(!this.gameActive) return;
+            this.ballX += this.dx; this.ballY += this.dy;
+            if(this.ballX+this.ballRadius > this.width || this.ballX-this.ballRadius < 0) this.dx = -this.dx;
+            if(this.ballY-this.ballRadius < 0) this.dy = -this.dy;
+            if(this.ballY+this.ballRadius > this.paddleY && this.ballX+this.ballRadius > this.paddleX && this.ballX-this.ballRadius < this.paddleX+this.paddleWidth) {
+                let hitPos = (this.ballX-this.paddleX)/this.paddleWidth;
+                let angle = (hitPos-0.5)*1.2;
+                this.dx = angle*6;
+                this.dy = -Math.abs(this.dy);
+                if(Math.abs(this.dx)<2) this.dx = this.dx>0?2.2:-2.2;
+                speakDebate();
+            }
+            if(this.ballY+this.ballRadius > this.height) {
+                this.lives--;
+                if(this.lives <= 0) {
+                    this.gameActive = false;
+                    this.stopGame();
+                    showBreakoutLoseUI();
+                } else {
+                    this.ballX = this.width/2; this.ballY = this.paddleY-15;
+                    this.dx = 3.8*(Math.random()>0.5?1:-1); this.dy = -4.2;
+                    setDialogue("李中将", "「我绝不会放弃为老首长辩护！」");
+                }
+            }
+            this.collisionDetection();
+            let bricksRemain = 0;
+            for(let r=0; r<this.rows; r++) for(let c=0; c<this.cols; c++) if(this.bricks[r][c].active) bricksRemain++;
+            if(bricksRemain === 0) {
+                this.gameActive = false;
+                this.stopGame();
+                showBreakoutWinUI(false);
+            }
+        }
+        draw() {
+            this.ctx.clearRect(0,0,this.width,this.height);
+            for(let r=0; r<this.rows; r++) for(let c=0; c<this.cols; c++) if(this.bricks[r][c].active) {
+                let brickX = c*(this.brickWidth+this.brickGap)+20;
+                let brickY = r*(this.brickHeight+this.brickGap)+45;
+                this.ctx.fillStyle = this.bricks[r][c].color;
+                this.ctx.fillRect(brickX,brickY,this.brickWidth,this.brickHeight);
+                this.ctx.fillStyle = '#f9e0a0';
+                this.ctx.fillRect(brickX+2,brickY+2,this.brickWidth-4,3);
+            }
+            this.ctx.fillStyle = '#f5bc70';
+            this.ctx.fillRect(this.paddleX,this.paddleY,this.paddleWidth,this.paddleHeight);
+            this.ctx.beginPath();
+            this.ctx.arc(this.ballX,this.ballY,this.ballRadius,0,Math.PI*2);
+            this.ctx.fillStyle = '#ffae42';
+            this.ctx.fill();
+            this.ctx.fillStyle = 'white';
+            this.ctx.font = 'bold 18px monospace';
+            this.ctx.fillText(`❤️ 辩护意志 ${this.lives}  |  ⚡ 证据击碎 ${this.score}`,20,35);
+        }
+        start() { if(this.gameLoop) cancelAnimationFrame(this.gameLoop); const step=()=>{ this.update(); this.draw(); if(this.gameActive) this.gameLoop=requestAnimationFrame(step); else this.gameLoop=null; }; this.gameLoop=requestAnimationFrame(step); }
+        stopGame() { if(this.gameLoop) cancelAnimationFrame(this.gameLoop); this.gameLoop=null; if(this.mouseMoveHandler) this.canvas.removeEventListener('mousemove',this.mouseMoveHandler); if(this.f3Handler) window.removeEventListener('keydown',this.f3Handler); }
+        destroy() { this.stopGame(); }
+    }
+    
+    async function showBreakoutWinUI(forced) {
+        hideGameUI();
+        await showSettleAnimation(true);
+        setDialogue("系统", forced ? "「李中将用信念击碎了所有质疑。」" : "「争辩胜利，但李中将内心仍不平静。」");
+        actionButtonsDiv.innerHTML = `<button id="continueStoryBtn">✨ 继续剧情 ✨</button><button id="restartGameBtn">🔄 重新争辩</button>`;
+        document.getElementById('continueStoryBtn')?.addEventListener('click', () => {
+            actionButtonsDiv.innerHTML = '';
+            currentPhase = 'story2';
+            story2Index = 0;
+            advanceStory2();
+        });
+        document.getElementById('restartGameBtn')?.addEventListener('click', () => fullRestart());
+    }
+    async function showBreakoutLoseUI() {
+        hideGameUI();
+        await showSettleAnimation(false);
+        setDialogue("司令部", "「李中将，你已经被感情蒙蔽了双眼。」");
+        actionButtonsDiv.innerHTML = `<button id="retryLevelBtn">⚔️ 再次辩护 ⚔️</button><button id="fullRestartBtn">🌀 重启故事</button>`;
+        document.getElementById('retryLevelBtn')?.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; restartBreakoutLevel(); });
+        document.getElementById('fullRestartBtn')?.addEventListener('click', () => fullRestart());
+    }
+    function restartBreakoutLevel() {
+        if(breakoutGame) breakoutGame.destroy();
+        breakoutGame = new BreakoutGame('breakoutCanvas');
+        breakoutGame.start();
+        setDialogue("李中将", "「再给我一次机会，我要为老首长正名！」");
+        currentPhase = 'breakout';
+        breakoutWrapper.classList.remove('hide');
+        slingWrapper.classList.add('hide');
+        slingshotStatsDiv.classList.add('hide');
+        actionButtonsDiv.innerHTML = '';
+    }
+    function startBreakoutPhase() {
+        hideGameUI();
+        breakoutWrapper.classList.remove('hide');
+        slingWrapper.classList.add('hide');
+        slingshotStatsDiv.classList.add('hide');
+        if(breakoutGame) breakoutGame.destroy();
+        breakoutGame = new BreakoutGame('breakoutCanvas');
+        breakoutGame.start();
+        setDialogue("李中将", "「这些所谓的‘罪证’，我一个都不信！」");
+        actionButtonsDiv.innerHTML = '';
+        clickHint.style.display = 'none';
+    }
+    
+    // ========================= 投石游戏·点击发射（物理抛物线，慢速） =========================
+    class SlingshotGame {
+        constructor(canvasId) {
+            this.canvas = document.getElementById(canvasId);
+            this.ctx = this.canvas.getContext('2d');
+            this.width = 900; this.height = 500;
+            this.canvas.width = this.width; this.canvas.height = this.height;
+            this.target = { x: 720, y: 180, radius: 30 }; // 飞机目标
+            this.slingPos = { x: 140, y: 380 };
+            this.hits = 0; this.misses = 0; this.remainingAttempts = 5;
+            this.gameActive = true;
+            this.animating = false;
+            this.stone = null;
+            this.gravity = 0.35;
+            this.drawStatic();
+            this.clickHandler = this.handleCanvasClick.bind(this);
+            this.canvas.addEventListener('click', this.clickHandler);
+            this.updateStatsUI();
+            this.f3Handler = (e) => { if(e.code === 'F3') { e.preventDefault(); this.forceWin(); } };
+            window.addEventListener('keydown', this.f3Handler);
+        }
+        
+        drawStatic() {
+            this.ctx.clearRect(0,0,this.width,this.height);
+            this.ctx.fillStyle = '#2a2a3a'; this.ctx.fillRect(0,0,this.width,this.height);
+            // 跑道和天空
+            this.ctx.fillStyle = '#3a5e3a'; this.ctx.fillRect(0,this.height-80,this.width,80);
+            this.ctx.fillStyle = '#ccccdd'; this.ctx.font = 'bold 24px monospace';
+            this.ctx.fillText("✈️ 叛逃飞机 ✈️", this.target.x-60, this.target.y-25);
+            this.ctx.fillStyle = '#e06c6c'; this.ctx.beginPath(); this.ctx.arc(this.target.x,this.target.y,this.target.radius,0,Math.PI*2); this.ctx.fill();
+            this.ctx.fillStyle = '#ffd966'; this.ctx.font = 'bold 14px monospace'; this.ctx.fillText("目标", this.target.x-15, this.target.y+5);
+            // 拦截指挥部
+            this.ctx.fillStyle = '#8b5a2b'; this.ctx.fillRect(this.slingPos.x-20, this.slingPos.y-15, 40, 30);
+            this.ctx.fillStyle = '#c97e3a'; this.ctx.font = 'bold 16px monospace'; this.ctx.fillText("🚀 拦截指令台", this.slingPos.x-50, this.slingPos.y-20);
+            this.ctx.fillStyle = 'white'; this.ctx.font = '14px monospace';
+            this.ctx.fillText("点击Canvas发射『拦截信号』", this.slingPos.x-80, this.slingPos.y+25);
+        }
+        
+        updateStatsUI() {
+            document.getElementById('hitCount').innerText = this.hits;
+            document.getElementById('missCount').innerText = this.misses;
+            document.getElementById('remainAttempts').innerText = this.remainingAttempts;
+        }
+        
+        handleCanvasClick(e) {
+            if(!this.gameActive || this.animating) return;
+            if(this.remainingAttempts <= 0 || this.hits>=3 || this.misses>=3) return;
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = this.canvas.width/rect.width;
+            const scaleY = this.canvas.height/rect.height;
+            let clickX = (e.clientX - rect.left)*scaleX;
+            let clickY = (e.clientY - rect.top)*scaleY;
+            // 限制点击范围不能太近
+            const dx = clickX - this.slingPos.x;
+            const dy = clickY - this.slingPos.y;
+            let vx = dx * 0.45;
+            let vy = dy * 0.45;
+            const speed = Math.hypot(vx, vy);
+            if(speed < 3) { setDialogue("系统", "「力度太小，信号无法发射。」"); return; }
+            if(speed > 14) { vx = vx * (14/speed); vy = vy * (14/speed); }
+            this.launchStone(vx, vy);
+        }
+        
+        launchStone(vx, vy) {
+            this.animating = true;
+            this.stone = { x: this.slingPos.x, y: this.slingPos.y, vx: vx, vy: vy };
+            const animate = () => {
+                if(!this.stone) return;
+                this.stone.x += this.stone.vx;
+                this.stone.y += this.stone.vy;
+                this.stone.vy += this.gravity;
+                this.drawStatic();
+                this.ctx.beginPath(); this.ctx.arc(this.stone.x, this.stone.y, 8, 0, Math.PI*2);
+                this.ctx.fillStyle = '#ff6666'; this.ctx.fill();
+                this.ctx.fillStyle = '#aa3333'; this.ctx.beginPath(); this.ctx.arc(this.stone.x-2, this.stone.y-2, 3, 0, Math.PI*2); this.ctx.fill();
+                
+                const dx = this.stone.x - this.target.x;
+                const dy = this.stone.y - this.target.y;
+                const dist = Math.hypot(dx, dy);
+                const hit = dist < this.target.radius;
+                
+                if(this.stone.y > this.height+60 || this.stone.x < -50 || this.stone.x > this.width+50 || (hit && !this.hitProcessed)) {
+                    this.animating = false;
+                    if(hit && !this.hitProcessed) {
+                        this.hitProcessed = true;
+                        this.hits++;
+                        setDialogue("李中将", "「拦截信号命中！但我真的想击落吗…」");
+                        speakIntercept();
+                    } else if(!hit && this.stone.y > this.height+30) {
+                        this.misses++;
+                        setDialogue("指挥部", "「信号偏离！快继续拦截！」");
+                        speakIntercept();
+                        this.hitProcessed = true;
+                    } else {
+                        if(!hit) { this.misses++; setDialogue("指挥部", "「拦截失败！飞机正在远离！」"); speakIntercept(); }
+                        this.hitProcessed = true;
+                    }
+                    if(this.hitProcessed) {
+                        this.remainingAttempts--;
+                        this.updateStatsUI();
+                        this.stone = null;
+                        if(this.hits >= 3) {
+                            this.gameActive = false;
+                            showSlingshotWin();
+                        } else if(this.misses >= 3 || (this.remainingAttempts === 0 && this.hits < 3)) {
+                            this.gameActive = false;
+                            showSlingshotLose();
+                        } else {
+                            this.animating = false;
+                            this.drawStatic();
+                        }
+                        return;
+                    }
+                    this.stone = null;
+                    this.drawStatic();
+                    return;
+                }
+                if(!this.hitProcessed && dist < this.target.radius) {
+                    this.hitProcessed = true;
+                    this.hits++;
+                    setDialogue("李中将", "「信号命中……但我的手在发抖。」");
+                    speakIntercept();
+                    this.remainingAttempts--;
+                    this.updateStatsUI();
+                    if(this.hits >= 3) {
+                        this.gameActive = false;
+                        showSlingshotWin();
+                        return;
+                    }
+                    this.stone = null;
+                    this.animating = false;
+                    this.drawStatic();
+                    return;
+                }
+                requestAnimationFrame(animate);
+            };
+            this.hitProcessed = false;
+            requestAnimationFrame(animate);
+        }
+        
+        forceWin() {
+            if(!this.gameActive) return;
+            this.hits = 3;
+            this.gameActive = false;
+            this.updateStatsUI();
+            showSlingshotWin();
+        }
+        
+        removeClickHandler() { this.canvas.removeEventListener('click', this.clickHandler); }
+        destroy() { this.removeClickHandler(); if(this.f3Handler) window.removeEventListener('keydown', this.f3Handler); }
+    }
+    
+    async function showSlingshotWin() {
+        hideGameUI();
+        await showSettleAnimation(true);
+        setDialogue("系统", "「拦截信号三次命中飞机。但李中将最终选择了放弃击落。」");
+        actionButtonsDiv.innerHTML = `<button id="endingBtn">🌟 走向结局 🌟</button><button id="restartAllBtn">🔄 重启故事</button>`;
+        document.getElementById('endingBtn')?.addEventListener('click', () => {
+            actionButtonsDiv.innerHTML = '';
+            currentPhase = 'ending';
+            endingIndex = 0;
+            advanceEnding();
+        });
+        document.getElementById('restartAllBtn')?.addEventListener('click', () => fullRestart());
+    }
+    async function showSlingshotLose() {
+        hideGameUI();
+        await showSettleAnimation(false);
+        setDialogue("系统", "「拦截信号未能阻止飞机，它消失在夜空中……」");
+        actionButtonsDiv.innerHTML = `<button id="retrySlingshotBtn">💪 重新拦截 💪</button><button id="globalRestartBtn">🌋 完全重启</button>`;
+        document.getElementById('retrySlingshotBtn')?.addEventListener('click', () => {
+            slingshotGame.resetGame();
+            actionButtonsDiv.innerHTML = '';
+            slingWrapper.classList.remove('hide');
+            slingshotStatsDiv.classList.remove('hide');
+            slingshotGame.gameActive = true;
+        });
+        document.getElementById('globalRestartBtn')?.addEventListener('click', () => fullRestart());
+    }
+    
+    function startSlingshotPhase() {
+        hideGameUI();
+        slingWrapper.classList.remove('hide');
+        slingshotStatsDiv.classList.remove('hide');
+        if(slingshotGame) slingshotGame.destroy();
+        slingshotGame = new SlingshotGame('slingCanvas');
+        actionButtonsDiv.innerHTML = '';
+        setDialogue("总理", "「李中将，是否击落，由你决定。」");
+        clickHint.style.display = 'none';
+    }
+    
+    // ========================= 完全重启 =========================
+    function fullRestart() {
+        if(breakoutGame) breakoutGame.destroy();
+        if(slingshotGame) slingshotGame.destroy();
+        story1Index=0; story2Index=0; endingIndex=0;
+        currentPhase='story1';
+        hideGameUI();
+        actionButtonsDiv.innerHTML = `<button id="startStoryBtn">🎭 开始故事 🎭</button>`;
+        setDialogue("作战指挥部", "「李中将，情报确认……老上司即将叛逃。」");
+        clickHint.style.display = 'block';
+        const startBtn = document.getElementById('startStoryBtn');
+        if(startBtn) startBtn.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; story1Index=0; advanceStory1(); });
+        if(!startBtn) {
+            const newBtn = document.createElement('button');
+            newBtn.id='startStoryBtn'; newBtn.innerText='🎭 开始故事 🎭';
+            actionButtonsDiv.innerHTML=''; actionButtonsDiv.appendChild(newBtn);
+            newBtn.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; story1Index=0; advanceStory1(); });
+        }
+    }
+    
+    fullRestart();
+</script>
+</body>
+</html>
