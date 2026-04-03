@@ -810,7 +810,7 @@
         currentPhase='story1';
         hideGameUI();
         actionButtonsDiv.innerHTML = `<button id="startStoryBtn">🎭 开始故事 🎭</button>`;
-        setDialogue("作战指挥部", "「李中将，情报确认……老上司即将叛逃。」");
+        setDialogue("作战指挥部", "「李中将，紧急情报……请立即到指挥部。」");
         clickHint.style.display = 'block';
         const startBtn = document.getElementById('startStoryBtn');
         if(startBtn) startBtn.addEventListener('click', () => { actionButtonsDiv.innerHTML=''; story1Index=0; advanceStory1(); });
