@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>抉择·折戟沉沙</title>
+    <title>抉择·折戟沉沙 | 多结局·实时对话</title>
     <style>
         * {
             user-select: none;
@@ -189,7 +189,7 @@
 <div class="game-container">
     <div class="dialogue-area" id="dialogueBox">
         <span class="speaker" id="speakerName">⚡ 作战指挥部</span>
-        <span class="dialogue-text" id="dialogueMsg">「李中将，紧急情报……请立即到指挥部。」</span>
+        <span class="dialogue-text" id="dialogueMsg">「李中将，有紧急情报……请立即到指挥部。」</span>
         <div class="click-hint" id="clickHint">▼ 点击或按空格继续 ▼</div>
     </div>
 
@@ -231,8 +231,11 @@
     const HIGH_SCORE_THRESHOLD = 800;   // True End
     const LOW_SCORE_THRESHOLD = 300;    // Bad End, 中间为Normal End
     
-    // 结局脚本 (动态填充)
+    // 结局脚本
     let currentEndingScript = [];
+    
+    // 自动对话定时器
+    let autoDialogueInterval = null;
     
     const dialogueBox = document.getElementById('dialogueBox');
     const speakerSpan = document.getElementById('speakerName');
@@ -247,12 +250,12 @@
     
     // ========================= 剧情脚本 =========================
     const story1Script = [
-        { speaker: "司令部", msg: "「李中将，情报部门确认，副统帅正在秘密策划叛逃。」" },
+        { speaker: "司令部", msg: "「李中将，情报部门确认，你的老上司，我们的副统帅，正在秘密策划叛逃。」" },
         { speaker: "李中将", msg: "「绝不可能！他是国家支柱，我跟随他多年，深知他的革命意志，他怎么会叛逃？」" },
         { speaker: "司令部", msg: "「证据确凿。他一直在谋划抢班夺权，野心勃勃。」" },
         { speaker: "李中将", msg: "「你们这是污蔑！我要向最高层申诉！」" },
         { speaker: "司令部", msg: "「冷静点，李中将。事实胜于雄辩。如果你不信，就看看这些‘证据’——这都是他的罪证！」" },
-        { speaker: "系统", msg: "「⚡『信仰的争辩』⚡ 击碎所有罪证，为老上司辩护！」" }
+        { speaker: "系统", msg: "「⚡『信仰的争辩』⚡ 击碎所有罪证砖块，为老上司辩护！」" }
     ];
     
     const story2Script = [
@@ -260,20 +263,20 @@
         { speaker: "副统帅", msg: "「小李，是我。」" },
         { speaker: "李中将", msg: "「首长？你在哪里？我……」" },
         { speaker: "副统帅", msg: "「我需要你安排一架飞机，今晚就走。」" },
-        { speaker: "李中将", msg: "「首长……您、您真的……到底发生了什么？」" },
-        { speaker: "老上司", msg: "「别问那么多。就当帮我最后一次。」" },
+        { speaker: "李中将", msg: "「首长……到底发生了什么？」" },
+        { speaker: "副统帅", msg: "「别问那么多了，就当帮我最后一次。」" },
         { speaker: "李中将", msg: "「（沉默良久）……好，我安排。」" },
         { speaker: "系统", msg: "「挂断电话后，李中将痛苦地握紧拳头。他思量再三，决定报告总理。」" },
         { speaker: "总理", msg: "「李中将，你做得对。现在立刻回指挥部待命，密切监视那架飞机。」" },
         { speaker: "系统", msg: "「李中将返回空军指挥部，雷达上，那架飞机已经起飞。」" },
         { speaker: "李中将", msg: "「总理，是否击落？」" },
-        { speaker: "总理", msg: "「在我回答你之前，我要问你个问题，请问是否要击落呢？」" },
+        { speaker: "总理", msg: "「李中将，你还有什么顾虑吗？」" },
         { speaker: "系统", msg: "「⚡『拦截的抉择』⚡ 点击画面发射‘拦截信号’，击中飞机三次即可阻止叛逃。但……你真的要击落吗？」" }
     ];
     
     // 三个结局脚本
     const trueEndingScript = [
-        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
+         { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
         { speaker: "总理", msg: "「粉碎反革命阴谋，可是不世功勋，国家和人民都会记得你的贡献，你可想好了？」" },
         { speaker: "李中将", msg: "「（深吸一口气）我需要主席的指示。」" },
         { speaker: "接线员", msg: "「总理，主席来电。」" },
@@ -281,14 +284,15 @@
         { speaker: "总理", msg: "「（盯着李中将，意味深长）是，主席。」" },
         { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
         { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
-        { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
-        { speaker: "系统", msg: "「二十年后，年迈的李中将与尚在人世的战友们来到邻国的那片荒野。」" },
-        { speaker: "李中将", msg: "「老首长，我们来看你了……」" },
-        { speaker: "系统", msg: "「一架民航飞机从头顶掠过，夕阳染红了天际。一位老战友缓缓走来。」" },
+        { speaker: "系统", msg: "「二十年后，年迈的李中将与战友来到邻国的那片荒野。」" },
+        { speaker: "李中将", msg: "「老首长，我来看你了……」" },
+        { speaker: "系统", msg: "「一架民航飞机从头顶掠过，夕阳染红了天际。一位老战友把一瓶酒放在地上。」" },
         { speaker: "战友", msg: "「老李，历史已经给出了答案。」" },
-        { speaker: "李中将", msg: "「我还是不能相信。」" },
-        { speaker: "战友", msg: "「其实我也不能。」" },
-        { speaker: "系统", msg: "「战友们站在坠机遗址前，沉默良久。风掠过草原，老首长寡言如旧。」" },
+        { speaker: "李中将", msg: "「我只是不明白，为什么……为什么会走到那一步。」" },
+        { speaker: "战友", msg: "「有些事，我们或许永远都不得而知了。」" },
+        { speaker: "李中将", msg: "「我一直不能相信。」" },
+        { speaker: "战友", msg: "「其实我也不能。」" },        
+        { speaker: "系统", msg: "「战友们站在坠机遗址前，默默敬礼。风掠过草原，老首长寡言如旧。」" },
         { speaker: "系统", msg: "「—— TRUE END —— 忠诚的守望者」" }
     ];
     
@@ -302,11 +306,11 @@
         { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
         { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
         { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
-        { speaker: "系统", msg: "「—— NORMAL END —— 真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。」" }
+        { speaker: "系统", msg: "「真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。—— NORMAL END ——」" }
     ];
     
     const badEndingScript = [
-        { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
+         { speaker: "李中将", msg: "「（看着雷达屏幕，手指悬在按钮上，最终放下）是不是应该请示主席？」" },
         { speaker: "总理", msg: "「粉碎反革命阴谋，可是不世功勋，国家和人民都会记得你的贡献，你可想好了？」" },
         { speaker: "李中将", msg: "「（深吸一口气）我需要主席的指示。」" },
         { speaker: "接线员", msg: "「总理，主席来电。」" },
@@ -315,12 +319,11 @@
         { speaker: "系统", msg: "「飞机消失在雷达边界。李中将彻夜未眠。」" },
         { speaker: "系统", msg: "「深夜，情报传来：飞机在邻国境内坠毁，无人生还。」" },
         { speaker: "李中将", msg: "「（望着总理的画像，喃喃自语）副统帅……真的是‘叛逃’吗？」" },
-        { speaker: "系统", msg: "「真相淹没在历史中。抉择与遗憾，永远留在了那个夜晚。" },
         { speaker: "系统", msg: "「事件过后，李中将因‘反革命同谋罪’被逮捕。」" },
-        { speaker: "审判员", msg: "「李中将，你私自为叛逃者提供飞机，拒绝总理指令，证据确凿，你还有什么话说？」" },
-        { speaker: "李中将", msg: "「……无话可说，我要见主席。」" },
-        { speaker: "系统", msg: "「他被剥夺军衔，关入监狱。生命从此失去了阳光。」" },
-        { speaker: "系统", msg: "「—— BAD END —— 人总会变，英雄也不例外。」" }
+        { speaker: "审判员", msg: "「李中将，你私自为叛逃者提供飞机，证据确凿，你还有什么话说？」" },
+        { speaker: "李中将", msg: "「……我无话可说。只求不要连累我的家人。」" },
+        { speaker: "系统", msg: "「他被剥夺军衔，关入秦城监狱。二十年后，在狱中病逝，至死未再见到阳光。」" },
+        { speaker: "系统", msg: "「历史的一粒灰，落在个人头上，就是一座山。—— BAD END ——」" }
     ];
     
     function setDialogue(speaker, msg) {
@@ -337,9 +340,9 @@
     const debateHeroLines = [
         "「他救过无数战士！是英雄！」",
         "「那些所谓的‘证据’一定有问题！」",
-        "「我绝不相信老首长会成为叛徒！」",
+        "「我绝不相信老首长为叛徒！」",
         "「你们根本不了解他的功勋！」",
-        "「当年是他带着我们解放了全国，他怎么可能叛变？」",
+        "「当年是他带着我们打江山，怎么可能叛变？」",
         "「这份情报一定是敌人的离间计！」",
         "「我要见最高层，当面质证！」",
         "「老首长的为人，我比你们任何人都清楚！」"
@@ -348,11 +351,11 @@
         "「权力使人腐化，你太天真了。」",
         "「他早有异心，只是你被蒙蔽。」",
         "「证据确凿，不要再固执了。」",
-        "「他的种种作为，你难道还不清楚吗？」",
+        "「你以为他还是我们曾经的英雄吗？」",
         "「人都是会变的，李中将。」",
         "「你已经被私人感情冲昏头脑了。」",
         "「这是组织的决定，不容置疑。」",
-        "「国家利益和你私人恩惠孰轻孰重？」"
+        "「若他清白，这些事情你怎么解释？」"
     ];
     function getRandomHeroLine() { return debateHeroLines[Math.floor(Math.random() * debateHeroLines.length)]; }
     function getRandomEnemyLine() { return debateEnemyLines[Math.floor(Math.random() * debateEnemyLines.length)]; }
@@ -366,7 +369,7 @@
     // 扩充拦截台词库（投石）
     const interceptHeroLines = [
         "「真的要击落吗……？」",
-        "「老首长，你到底是为什么……」",
+        "「他带领我们为国奋战的画面犹在眼前……」",
         "「这是叛国，还是……另一种忠诚？」",
         "「手指在颤抖……下不去手。」",
         "「如果他是被冤枉的呢？」",
@@ -378,8 +381,8 @@
         "「叛徒必须受到制裁！」",
         "「放走他，你也是同谋！」",
         "「国家利益高于一切！」",
-        "「还犹豫什么？马上击落！」",
-        "「快下令！否则来不及了！」",
+        "「你也要当反革命吗！」",
+        "「快下令击落！否则来不及了！」",
         "「李中将，你还在等什么？」",
         "「军人的天职就是服从！」",
         "「你不下命令，我来！」"
@@ -391,6 +394,25 @@
         const isHero = Math.random() > 0.5;
         if (isHero) setDialogue("李中将", getRandomInterceptHero());
         else setDialogue("指挥部", getRandomInterceptEnemy());
+    }
+    
+    // 启动自动对话定时器（每2秒）
+    function startAutoDialogue() {
+        if (autoDialogueInterval) clearInterval(autoDialogueInterval);
+        autoDialogueInterval = setInterval(() => {
+            if (currentPhase === 'breakout' && breakoutGame && breakoutGame.gameActive) {
+                speakDebate();
+            } else if (currentPhase === 'slingshot' && slingshotGame && slingshotGame.gameActive) {
+                speakIntercept();
+            }
+        }, 2000);
+    }
+    
+    function stopAutoDialogue() {
+        if (autoDialogueInterval) {
+            clearInterval(autoDialogueInterval);
+            autoDialogueInterval = null;
+        }
     }
     
     // 结算动画
@@ -426,6 +448,7 @@
             slingshotGame.animating = false; 
             if(slingshotGame.removeClickHandler) slingshotGame.removeClickHandler(); 
         }
+        stopAutoDialogue();
     }
     
     // ========================= 剧情推进 =========================
@@ -578,7 +601,6 @@
                             this.dy = -this.dy;
                             brick.active = false;
                             this.score += 10;
-                            speakDebate();
                             return;
                         }
                     }
@@ -596,7 +618,6 @@
                 this.dx = angle*6;
                 this.dy = -Math.abs(this.dy);
                 if(Math.abs(this.dx)<2) this.dx = this.dx>0?2.2:-2.2;
-                speakDebate();
             }
             if(this.ballY+this.ballRadius > this.height) {
                 this.lives--;
@@ -645,13 +666,12 @@
     }
     
     async function showBreakoutWinUI(forced) {
-        // 计算打砖块得分：剩余生命 * 击碎砖块得分
         if(breakoutGame) {
             breakoutScoreValue = breakoutGame.lives * breakoutGame.score;
         }
         hideGameUI();
         await showSettleAnimation(true);
-        setDialogue("系统", forced ? "「李中将用信念击碎了所有质疑。」" : "「争辩胜利，但李中将内心仍不平静。」");
+        setDialogue("系统", forced ? "「李中将用信念击碎了所有质疑。」" : "「争辩结束后，司令部答应先等待总理指示，但李中将内心仍不平静。」");
         actionButtonsDiv.innerHTML = `<button id="continueStoryBtn">✨ 继续剧情 ✨</button><button id="restartGameBtn">🔄 重新争辩</button>`;
         const continueBtn = document.getElementById('continueStoryBtn');
         const restartBtn = document.getElementById('restartGameBtn');
@@ -683,6 +703,7 @@
         slingWrapper.classList.add('hide');
         slingshotStatsDiv.classList.add('hide');
         actionButtonsDiv.innerHTML = '';
+        startAutoDialogue();
     }
     function startBreakoutPhase() {
         hideGameUI();
@@ -695,9 +716,10 @@
         setDialogue("李中将", "「这些所谓的‘罪证’，我一个都不信！」");
         actionButtonsDiv.innerHTML = '';
         clickHint.style.display = 'none';
+        startAutoDialogue();
     }
     
-    // ========================= 投石游戏·移动目标+20次机会 =========================
+    // ========================= 投石游戏·移动目标+20次机会，实时移动和对话 =========================
     class SlingshotGame {
         constructor(canvasId) {
             this.canvas = document.getElementById(canvasId);
@@ -728,15 +750,21 @@
             this.updateStatsUI();
             this.f3Handler = (e) => { if(e.code === 'F3') { e.preventDefault(); this.forceWin(); } };
             window.addEventListener('keydown', this.f3Handler);
+            // 移动循环：无论是否动画都持续移动
             this.moveInterval = setInterval(() => this.updateTargetPosition(), 30);
         }
         
         updateTargetPosition() {
-            if(!this.gameActive || this.animating) return;
+            if(!this.gameActive) return;
             this.target.x += this.targetDir * this.targetSpeed;
             if(this.target.x <= this.targetMinX) { this.target.x = this.targetMinX; this.targetDir = 1; }
             if(this.target.x >= this.targetMaxX) { this.target.x = this.targetMaxX; this.targetDir = -1; }
+            // 重绘（如果不在动画中，直接重绘；如果在动画中，动画每帧也会调用drawStatic，但这里为了实时移动，也调用一下）
             if(!this.animating) this.drawStatic();
+            else {
+                // 动画中也需要更新目标位置，但不需要重复drawStatic（动画每帧会draw）
+                // 但为了目标移动的平滑，动画帧中也会读取最新的target.x，所以只需更新数值即可
+            }
         }
         
         drawStatic() {
@@ -784,7 +812,9 @@
                 this.stone.x += this.stone.vx;
                 this.stone.y += this.stone.vy;
                 this.stone.vy += this.gravity;
+                // 重新绘制背景和目标（目标已实时移动）
                 this.drawStatic();
+                // 绘制石头
                 this.ctx.beginPath(); this.ctx.arc(this.stone.x, this.stone.y, 8, 0, Math.PI*2);
                 this.ctx.fillStyle = '#ff6666'; this.ctx.fill();
                 this.ctx.fillStyle = '#aa3333'; this.ctx.beginPath(); this.ctx.arc(this.stone.x-2, this.stone.y-2, 3, 0, Math.PI*2); this.ctx.fill();
@@ -800,10 +830,8 @@
                         this.hitProcessed = true;
                         this.hits++;
                         setDialogue("李中将", "「拦截信号命中！但我真的想击落吗…」");
-                        speakIntercept();
                     } else if(!hit) {
                         setDialogue("指挥部", "「信号偏离！快继续拦截！」");
-                        speakIntercept();
                         this.hitProcessed = true;
                     } else {
                         this.hitProcessed = true;
@@ -834,7 +862,6 @@
                     this.hitProcessed = true;
                     this.hits++;
                     setDialogue("李中将", "「信号命中……但我的手在发抖。」");
-                    speakIntercept();
                     this.remainingAttempts--;
                     this.updateStatsUI();
                     if(this.hits >= 3) {
@@ -887,7 +914,6 @@
     }
     
     async function showSlingshotWin() {
-        // 计算投石得分：剩余次数 * 命中次数 (命中次数最多3)
         if(slingshotGame) {
             slingshotScoreValue = slingshotGame.remainingAttempts * slingshotGame.hits;
         }
@@ -919,9 +945,9 @@
             slingWrapper.classList.remove('hide');
             slingshotStatsDiv.classList.remove('hide');
             slingshotGame.gameActive = true;
+            startAutoDialogue();
         });
         if(acceptBtn) acceptBtn.addEventListener('click', () => {
-            // 投石得分为0
             slingshotScoreValue = 0;
             actionButtonsDiv.innerHTML = '';
             startEndingBasedOnScore();
@@ -938,6 +964,7 @@
         actionButtonsDiv.innerHTML = '';
         setDialogue("总理", "「李中将，是否击落，由你决定。」");
         clickHint.style.display = 'none';
+        startAutoDialogue();
     }
     
     // ========================= 完全重启（重置所有得分） =========================
@@ -951,7 +978,7 @@
         currentPhase='story1';
         hideGameUI();
         actionButtonsDiv.innerHTML = `<button id="startStoryBtn">🎭 开始故事 🎭</button>`;
-        setDialogue("作战指挥部", "「李中将，紧急情报，请立即到司令部。」");
+        setDialogue("作战指挥部", "「李中将，紧急情报……请立即到司令部。」");
         clickHint.style.display = 'block';
         const startBtn = document.getElementById('startStoryBtn');
         if(startBtn) {
